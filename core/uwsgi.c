@@ -1342,33 +1342,11 @@ void gracefully_kill_them_all(int signum) {
 		}
 	}
 
-	// avoid breaking other child process signal handling logic by doing nohang checks on the workers
-	// until they are all done.
-	int keep_waiting = 1;
-	while (keep_waiting == 1) {
-		int still_running = 0;
-		int errors = 0;
-		for (i = 1; i <= uwsgi.numproc; i++) {
-			if (uwsgi.workers[i].pid > 0) {
-				pid_t rval = waitpid(uwsgi.workers[i].pid, NULL, WNOHANG);
-				if (rval == uwsgi.workers[i].pid) {
-					uwsgi.workers[i].pid = 0;
-				} else if (rval == 0) {
-					still_running++;
-				} else if (rval < 0) {
-					errors++;
-				}
-			}
-		}
-
-		// exit out if everything is done or we got errors as we can't do much about the errors at this point
-		if (still_running == 0 || errors > 0) {
-			keep_waiting = 0;
-			break;
-		}
-		sleep(1);
-	}
-
+	// Do not wait for the workers here: this function runs in the master
+	// (fifo command or signal handler), and waiting would stop the master
+	// loop from serving the stats socket and the fifo, and from enforcing
+	// worker-reload-mercy. The master loop reaps the workers and exits once
+	// they are all gone (uwsgi_master_check_death()).
 	uwsgi_destroy_processes();
 }
 
